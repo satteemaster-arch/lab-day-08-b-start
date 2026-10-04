@@ -96,11 +96,21 @@ README.md                   ← หลักฐาน Twist (ภาพ DevTools 
 | `GET /dashboard` พร้อม cookie ที่ถูกต้อง | — | `200` เห็นข้อมูล dashboard |
 | logout แล้ว `GET /dashboard` | — | **`307` → `/login`** |
 
-ภาพหน้าจอ (ตอน log out):
-<!-- แทนที่ path ด้านล่างด้วยภาพจริง -->
-- (ก) กดลิงก์ "Dashboard" ใน Nav แล้วโดนเด้งไป `/login`: `![ui redirect](docs/twist2-ui.png)`
-- (ข) พิมพ์ `/dashboard` ตรง ๆ ใน address bar — Network tab เห็น `307` ก่อนมีไฟล์ของหน้า dashboard โหลด: `![direct url 307](docs/twist2-direct-307.png)`
-- เทียบเวอร์ชันก่อนแก้ (starter) ที่โหลดหน้า dashboard มาเต็ม ๆ ทั้งที่ log out: `![before](docs/twist2-before.png)`
+### ภาพหน้าจอ
+
+ถ่ายด้วย Chrome แบบ headless ผ่าน Puppeteer บน production build — "ก่อนแก้" รันจาก starter ต้นฉบับ (แตกจาก zip ใหม่) · ตาราง network คือ response ทุกตัวที่ Chrome ได้รับจริงตามลำดับ (บันทึกผ่าน Puppeteer ไม่ใช่ภาพ DevTools)
+
+**(ก) กดลิงก์ "Dashboard" ใน Nav ตอน log out → โดนเด้งไป `/login`**
+![ui redirect](docs/twist2-ui.png)
+
+**(ข) พิมพ์ `/dashboard` ตรง ๆ ตอน log out → `307` ก่อน และไม่มีไฟล์ของหน้า dashboard ถูกโหลดเลย**
+![direct url 307](docs/twist2-direct-307.png)
+
+**เทียบ: ก่อนแก้ — ได้ `200` และโหลด `app/dashboard/page-*.js` มาทั้งที่ log out**
+![before](docs/twist2-before.png)
+
+**ล็อกอินถูกต้อง → ได้ cookie httpOnly แล้วเข้า dashboard ได้**
+![login](docs/twist2-login.png)
 
 ## Twist 3 — ข้อความลับต้องหายไปจาก JS ที่ส่งให้เบราว์เซอร์
 
@@ -113,10 +123,15 @@ middleware ครอบแค่ `/dashboard/:path*` แต่ไฟล์ JS �
 | `app/dashboard/page.jsx` มี `"use client"` | มี | **ไม่มี** |
 | `app/dashboard/DashboardPanel.jsx` | มี | **ลบแล้ว** |
 
-ภาพหน้าจอ — DevTools → Sources → Ctrl+Shift+F ค้น `ยอดขายทั้งปี`:
-<!-- แทนที่ path ด้านล่างด้วยภาพจริง -->
-- ก่อนแก้ (เจอใน `page-*.js`): `![search before](docs/twist3-before.png)`
-- หลังแก้ (ไม่เจอ): `![search after](docs/twist3-after.png)`
+> ชื่อไฟล์ `page-<hash>.js` เปลี่ยนทุกครั้งที่ build ใหม่ — ในภาพด้านล่างจึงเป็นอีก hash หนึ่ง แต่เป็นไฟล์เดียวกัน (`chunks/app/dashboard/page-*.js`)
+
+### ภาพหน้าจอ
+
+**ก่อนแก้ — โหลดไฟล์ JS ของ dashboard ตรง ๆ โดยไม่มี cookie แล้วเจอข้อความลับ**
+![search before](docs/twist3-before.png)
+
+**หลังแก้ — ค้นในไฟล์ JS ทุกไฟล์ที่เบราว์เซอร์ได้รับ (แม้ล็อกอินแล้วเปิด /dashboard) และใน `.next/static` ทั้งหมด → ไม่เจอ**
+![search after](docs/twist3-after.png)
 
 ## Twist 4 — ไม่ hardcode ความลับลงในโค้ด
 
