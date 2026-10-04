@@ -76,3 +76,57 @@ README.md                   ← หลักฐาน Twist (ภาพ DevTools 
 - middleware auth guard บล็อกกรณีไม่ล็อกอินได้จริง — 40%
 - อธิบายได้ว่าทำไม server-side guard ปลอดภัยกว่า client-side guard เดิม — 30%
 - ความลับไม่หลุดไปฝั่ง client: `/dashboard` เป็น Server Component · `DashboardPanel.jsx` ถูกลบ (ค้น `ยอดขายทั้งปี` ใน DevTools บน production build ต้องไม่เจอ) · secret อยู่ใน `.env.local` ไม่ hardcode — 30%
+
+---
+
+# หลักฐาน Twist (Lab B)
+
+> ทดสอบทั้งหมดบน **production build** (`npm run build && npm start`) · ผลด้านล่างได้จากการยิง HTTP request จริงด้วย `curl` ทั้งเวอร์ชันก่อนแก้ (starter) และหลังแก้
+
+## Twist 2 — คนไม่ล็อกอินเข้า `/dashboard` ไม่ได้ ทั้งจาก UI และ direct URL
+
+`middleware.js` รันที่ server **ก่อน** Next.js render หน้าใด ๆ — ถ้าไม่มี cookie `session` ที่ลายเซ็นถูกต้องจะตอบ `307` ไป `/login` ทันที เบราว์เซอร์จึงไม่ได้รับ HTML/JS ของหน้า dashboard เลย
+
+| กรณี | ก่อนแก้ (client-side guard) | หลังแก้ (middleware) |
+|---|:--:|:--:|
+| `GET /dashboard` ไม่มี cookie | `200` — ได้หน้าเต็ม ๆ | **`307` → `/login`** |
+| `GET /dashboard` cookie ปลอม `session=admin@cmu.ac.th.deadbeef` | — | **`307` → `/login`** (ลายเซ็นไม่ตรง) |
+| login ผิดรหัส | — | `200` + ข้อความ `อีเมลหรือรหัสผ่านไม่ถูกต้อง` · ไม่ได้ cookie |
+| login ถูก (`admin@cmu.ac.th` / `1234`) | — | `303` → `/dashboard` · ได้ cookie `session` แบบ **HttpOnly** |
+| `GET /dashboard` พร้อม cookie ที่ถูกต้อง | — | `200` เห็นข้อมูล dashboard |
+| logout แล้ว `GET /dashboard` | — | **`307` → `/login`** |
+
+ภาพหน้าจอ (ตอน log out):
+<!-- แทนที่ path ด้านล่างด้วยภาพจริง -->
+- (ก) กดลิงก์ "Dashboard" ใน Nav แล้วโดนเด้งไป `/login`: `![ui redirect](docs/twist2-ui.png)`
+- (ข) พิมพ์ `/dashboard` ตรง ๆ ใน address bar — Network tab เห็น `307` ก่อนมีไฟล์ของหน้า dashboard โหลด: `![direct url 307](docs/twist2-direct-307.png)`
+- เทียบเวอร์ชันก่อนแก้ (starter) ที่โหลดหน้า dashboard มาเต็ม ๆ ทั้งที่ log out: `![before](docs/twist2-before.png)`
+
+## Twist 3 — ข้อความลับต้องหายไปจาก JS ที่ส่งให้เบราว์เซอร์
+
+middleware ครอบแค่ `/dashboard/:path*` แต่ไฟล์ JS อยู่ที่ `/_next/static/...` ซึ่ง matcher ไม่ครอบ — ถ้าข้อความลับอยู่ใน Client Component ใครรู้ URL ก็โหลดไฟล์ได้เลย วิธีแก้คือรื้อ `/dashboard` เป็น **Server Component** และลบ `DashboardPanel.jsx` ทิ้ง → ข้อความลับถูก render เป็น HTML ที่ server เท่านั้น ไม่ถูก bundle ลง JS
+
+| ตรวจสอบ | ก่อนแก้ | หลังแก้ |
+|---|---|---|
+| ค้น `ยอดขายทั้งปี` ใน `.next/static/` | เจอใน `chunks/app/dashboard/page-4d3b3f11caa0b2b5.js` | **ไม่เจอในไฟล์ใดเลย** ✅ |
+| `GET` ไฟล์ JS นั้นโดยไม่มี cookie | `200` — โหลดได้ทั้งที่ไม่ล็อกอิน | ไฟล์นี้ไม่มีข้อความลับแล้ว |
+| `app/dashboard/page.jsx` มี `"use client"` | มี | **ไม่มี** |
+| `app/dashboard/DashboardPanel.jsx` | มี | **ลบแล้ว** |
+
+ภาพหน้าจอ — DevTools → Sources → Ctrl+Shift+F ค้น `ยอดขายทั้งปี`:
+<!-- แทนที่ path ด้านล่างด้วยภาพจริง -->
+- ก่อนแก้ (เจอใน `page-*.js`): `![search before](docs/twist3-before.png)`
+- หลังแก้ (ไม่เจอ): `![search after](docs/twist3-after.png)`
+
+## Twist 4 — ไม่ hardcode ความลับลงในโค้ด
+
+- `SESSION_SECRET` อ่านจาก `process.env` ใน `lib/session.js` เท่านั้น ใช้เซ็น cookie `session` ด้วย HMAC-SHA256 — ค่าจริงอยู่ใน `.env.local` ซึ่งถูก `.gitignore` (`.env*`) กันไว้ ไม่เข้า git
+- `SESSION_SECRET` **ไม่มี** prefix `NEXT_PUBLIC_` → อ่านได้เฉพาะฝั่ง server · ค้นค่าของมันใน `.next/static/` แล้ว**ไม่เจอ** ✅
+- `NEXT_PUBLIC_SITE_NAME` **มี** prefix → ตั้งใจให้ถูกฝังลง JS เพราะ `Nav.jsx` (Client Component) ต้องใช้แสดงชื่อเว็บ และไม่ใช่ความลับ
+- `.env.local.example` ที่ commit มีแค่ค่าตัวอย่าง
+
+## ทำไม server-side guard ปลอดภัยกว่า client-side guard เดิม
+
+- **เดิม:** `if (!user) return null` อยู่ใน Client Component — เงื่อนไขนี้รัน *ในเบราว์เซอร์* หลังจากเบราว์เซอร์ดาวน์โหลด JS ที่มีข้อความลับมาแล้ว มันแค่ "ไม่แสดง" ไม่ได้ "ไม่ส่ง" — เปิด DevTools หรือโหลดไฟล์ JS ตรง ๆ ก็เห็นข้อมูล
+- **ใหม่:** middleware ตัดสินที่ server ก่อนตอบ request — ไม่ผ่านก็ได้แค่ `307` ไม่มีข้อมูลใด ๆ ติดไปด้วย และหน้า dashboard เป็น Server Component จึงไม่มีโค้ด/ข้อความลับอยู่ใน JS bundle ให้ขุดหาตั้งแต่แรก
+- cookie เป็น **httpOnly** (JS ในเบราว์เซอร์อ่าน/ขโมยไม่ได้) และ**เซ็นด้วย `SESSION_SECRET`** (ปลอม cookie เองไม่ได้ เพราะไม่รู้ secret ที่ใช้คำนวณลายเซ็น)
